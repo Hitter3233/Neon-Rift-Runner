@@ -1,0 +1,141 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>NEON RIFT RUNNER</title>
+<style>
+:root{--cyan:#54f7ff;--pink:#ff4fcb;--violet:#9a6bff;--bg:#070816}
+*{box-sizing:border-box}
+html,body{margin:0;width:100%;height:100%;overflow:hidden;background:var(--bg);color:#f4f7ff;font-family:system-ui,-apple-system,Segoe UI,sans-serif;touch-action:none}
+body{display:grid;place-items:center}
+#wrap{position:relative;width:min(100vw,1100px);height:min(100vh,700px);overflow:hidden;background:#080b20;border:1px solid #28305a;box-shadow:0 0 60px #4a35c544}
+canvas{width:100%;height:100%;display:block}
+.hud{position:absolute;inset:0;pointer-events:none;padding:clamp(12px,2.5vw,24px);display:flex;flex-direction:column;justify-content:space-between}
+.top{display:flex;align-items:flex-start;justify-content:space-between;gap:12px}
+.logo{font-size:clamp(15px,2.6vw,25px);font-weight:1000;letter-spacing:.12em;line-height:1;text-shadow:0 0 16px #54f7ff99}
+.logo span{color:var(--cyan)}
+.stats{display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end}
+.pill{background:#0b1030cc;border:1px solid #54f7ff66;border-radius:10px;padding:7px 11px;font-size:12px;font-weight:800;letter-spacing:.08em;backdrop-filter:blur(8px)}
+.pill b{color:var(--cyan);font-size:15px;margin-left:5px}
+.bottom{display:flex;justify-content:space-between;align-items:end;gap:12px}
+.tip{font-size:12px;color:#b5c4ee;text-shadow:0 2px 8px #000;line-height:1.5}
+.controls{display:flex;gap:8px;pointer-events:auto}
+.ctrl{border:1px solid #54f7ff77;background:#101638bb;color:white;border-radius:14px;width:58px;height:52px;font-size:20px;font-weight:900;box-shadow:inset 0 0 18px #54f7ff11;touch-action:none}
+.ctrl:active{background:#54f7ff55;transform:scale(.96)}
+.overlay{position:absolute;inset:0;display:grid;place-items:center;padding:20px;background:linear-gradient(180deg,#080a1a55,#080a1add);backdrop-filter:blur(5px)}
+.panel{width:min(92%,490px);text-align:center;padding:clamp(22px,5vw,40px);border-radius:24px;border:1px solid #54f7ff66;background:linear-gradient(145deg,#141b40ee,#0b0d24f5);box-shadow:0 0 55px #8d5aff22}
+.kicker{font-size:11px;letter-spacing:.35em;font-weight:900;color:var(--pink)}
+h1{font-size:clamp(32px,7vw,58px);line-height:.95;letter-spacing:-.06em;margin:12px 0 14px;font-weight:1000}
+h1 em{font-style:normal;color:var(--cyan);text-shadow:0 0 24px #54f7ff77}
+.panel p{color:#c6d0f5;font-size:14px;line-height:1.6;margin:0 auto 20px;max-width:360px}
+.mainbtn{pointer-events:auto;cursor:pointer;border:0;border-radius:12px;padding:14px 24px;background:linear-gradient(90deg,var(--cyan),#8ca8ff);color:#071024;font-weight:1000;letter-spacing:.12em;font-size:13px;box-shadow:0 0 28px #54f7ff44}
+.sub{margin-top:13px;font-size:11px;color:#8998c9;letter-spacing:.12em}
+.hidden{display:none!important}
+@media(max-width:560px){#wrap{width:100vw;height:100dvh;border:0}.tip{max-width:170px}.ctrl{width:50px;height:48px}.pill{padding:6px 8px;font-size:10px}.pill b{font-size:13px}}
+</style>
+</head>
+<body>
+<div id="wrap">
+<canvas id="game" aria-label="Neon Rift Runner game"></canvas>
+<div class="hud">
+  <div class="top">
+    <div class="logo">NEON <span>RIFT</span><br>RUNNER</div>
+    <div class="stats">
+      <div class="pill">SCORE <b id="score">00000</b></div>
+      <div class="pill">SHARDS <b id="shards">0</b></div>
+      <div class="pill">BEST <b id="best">0</b></div>
+    </div>
+  </div>
+  <div class="bottom">
+    <div class="tip">SPACE / ↑ / TAP = JUMP<br>↓ = SLIDE · Collect shards. Dodge rifts.</div>
+    <div class="controls">
+      <button class="ctrl" id="slide" aria-label="Slide">↓</button>
+      <button class="ctrl" id="jump" aria-label="Jump">↑</button>
+    </div>
+  </div>
+</div>
+<div class="overlay" id="start">
+  <div class="panel">
+    <div class="kicker">A NEON ARCADE RUN</div>
+    <h1>RUN THE<br><em>RIFT.</em></h1>
+    <p>The city is collapsing into a digital void. Sprint through the neon grid, vault over glitches, slide under laser gates, and collect energy shards to beat your high score.</p>
+    <button class="mainbtn" id="play">START RUN</button>
+    <div class="sub">ENDLESS · ONE MORE TRY · NO DOWNLOADS</div>
+  </div>
+</div>
+<div class="overlay hidden" id="over">
+  <div class="panel">
+    <div class="kicker">SIGNAL LOST</div>
+    <h1>RIFT <em>CRASH.</em></h1>
+    <p id="result">You made it a long way.</p>
+    <button class="mainbtn" id="again">RUN IT BACK</button>
+    <div class="sub">THE GRID IS WAITING.</div>
+  </div>
+</div>
+</div>
+<script>
+(() => {
+const canvas=document.getElementById('game'),ctx=canvas.getContext('2d');
+const scoreEl=document.getElementById('score'),shardsEl=document.getElementById('shards'),bestEl=document.getElementById('best');
+const startEl=document.getElementById('start'),overEl=document.getElementById('over'),resultEl=document.getElementById('result');
+let W=900,H=600,dpr=1,mode='ready',last=0,elapsed=0,score=0,shards=0,speed=330,spawn=0,shardSpawn=0,shake=0;
+let obstacles=[],gems=[],particles=[],stars=[];
+const player={x:135,y:0,w:34,h:52,vy:0,onGround:true,sliding:false,slideTime:0,invuln:0};
+const groundY=()=>H*.79;
+let best=0;try{best=Number(localStorage.getItem('neonRiftBest')||0)}catch(e){}
+bestEl.textContent=best;
+function resize(){const r=canvas.getBoundingClientRect();dpr=Math.min(devicePixelRatio||1,2);W=r.width;H=r.height;canvas.width=Math.floor(W*dpr);canvas.height=Math.floor(H*dpr);ctx.setTransform(dpr,0,0,dpr,0,0);player.x=W*.15;if(player.onGround)player.y=groundY()-player.h;stars=Array.from({length:70},()=>({x:Math.random()*W,y:Math.random()*H*.72,r:Math.random()*1.7+.3,a:Math.random()*.6+.2}))}
+window.addEventListener('resize',resize);resize();
+function reset(){mode='playing';elapsed=0;score=0;shards=0;speed=330;spawn=.8;shardSpawn=.8;obstacles=[];gems=[];particles=[];shake=0;player.x=W*.15;player.w=34;player.h=52;player.y=groundY()-player.h;player.vy=0;player.onGround=true;player.sliding=false;player.slideTime=0;player.invuln=0;startEl.classList.add('hidden');overEl.classList.add('hidden');last=performance.now()}
+function jump(){if(mode==='ready'){reset();return}if(mode!=='playing')return;if(player.onGround&&!player.sliding){player.vy=-Math.min(660,H*1.1);player.onGround=false;burst(player.x+10,player.y+player.h,'#54f7ff',7)}}
+function slide(){if(mode!=='playing')return;if(player.onGround){player.sliding=true;player.slideTime=.55}}
+function burst(x,y,color,n){for(let i=0;i<n;i++)particles.push({x,y,vx:(Math.random()-.5)*240,vy:(Math.random()-.8)*220,life:.35+Math.random()*.5,max:.8,color,r:2+Math.random()*3})}
+function end(){mode='over';shake=15;burst(player.x+15,player.y+20,'#ff4fcb',24);best=Math.max(best,Math.floor(score));try{localStorage.setItem('neonRiftBest',best)}catch(e){}bestEl.textContent=best;resultEl.textContent=`Score: ${Math.floor(score).toLocaleString()} · Shards: ${shards}. The rift gets faster the longer you survive.`;overEl.classList.remove('hidden')}
+function rectHit(a,b){return a.x<b.x+b.w&&a.x+a.w>b.x&&a.y<b.y+b.h&&a.y+a.h>b.y}
+function spawnObstacle(){const g=groundY(),roll=Math.random();if(roll<.48){const h=35+Math.random()*23;obstacles.push({type:'block',x:W+40,y:g-h,w:28+Math.random()*17,h})}else if(roll<.8){obstacles.push({type:'gate',x:W+40,y:g-84,w:54,h:15})}else{obstacles.push({type:'rift',x:W+40,y:g-22,w:64,h:22})}}
+function drawBackground(dt){ctx.fillStyle='#080b20';ctx.fillRect(0,0,W,H);
+let grad=ctx.createRadialGradient(W*.6,H*.35,5,W*.6,H*.35,H*.8);grad.addColorStop(0,'#21164b');grad.addColorStop(.6,'#101333');grad.addColorStop(1,'#080b20');ctx.fillStyle=grad;ctx.fillRect(0,0,W,H);
+for(const s of stars){s.x-=speed*.025*dt;if(s.x<0)s.x=W;ctx.globalAlpha=s.a;ctx.fillStyle='#d7faff';ctx.fillRect(s.x,s.y,s.r,s.r)}ctx.globalAlpha=1;
+const g=groundY();ctx.fillStyle='#0b1230';ctx.fillRect(0,g,W,H-g);
+ctx.strokeStyle='#54f7ff';ctx.globalAlpha=.25;ctx.lineWidth=1;
+for(let x=0;x<W+80;x+=60){let xx=(x-(elapsed*speed*.45)%60);ctx.beginPath();ctx.moveTo(xx,g);ctx.lineTo(W/2+(xx-W/2)*2.7,H);ctx.stroke()}
+for(let y=g+10;y<H;y+=Math.max(14,(y-g)*.12)){let yy=g+((y-g+(elapsed*speed*.6)%(H-g))%(H-g));ctx.beginPath();ctx.moveTo(0,yy);ctx.lineTo(W,yy);ctx.stroke()}
+ctx.globalAlpha=1;ctx.shadowBlur=18;ctx.shadowColor='#54f7ff';ctx.strokeStyle='#54f7ff';ctx.beginPath();ctx.moveTo(0,g);ctx.lineTo(W,g);ctx.stroke();ctx.shadowBlur=0}
+function drawPlayer(){let x=player.x,y=player.y,w=player.w,h=player.h;if(player.sliding){h=25;y=groundY()-h}
+ctx.save();ctx.shadowBlur=22;ctx.shadowColor='#54f7ff';ctx.fillStyle=player.invuln>0?'#ffffff':'#54f7ff';
+ctx.beginPath();if(ctx.roundRect)ctx.roundRect(x,y,w,h,8);else ctx.rect(x,y,w,h);ctx.fill();
+ctx.shadowBlur=0;ctx.fillStyle='#101536';ctx.fillRect(x+w*.53,y+h*.22,w*.28,5);
+ctx.fillStyle='#ff4fcb';ctx.fillRect(x+w*.13,y+h*.68,w*.22,4);
+ctx.fillStyle='#dffcff';ctx.fillRect(x+w*.17,y+h*.12,5,Math.min(11,h*.2));
+ctx.restore();
+}
+function drawObstacle(o){ctx.save();if(o.type==='block'){ctx.shadowBlur=20;ctx.shadowColor='#ff4fcb';ctx.fillStyle='#ff4fcb';ctx.fillRect(o.x,o.y,o.w,o.h);ctx.fillStyle='#32163f';ctx.fillRect(o.x+5,o.y+5,o.w-10,o.h-10);ctx.fillStyle='#ffc5f3';ctx.fillRect(o.x+7,o.y+7,4,o.h-14)}
+else if(o.type==='gate'){ctx.shadowBlur=18;ctx.shadowColor='#ff4fcb';ctx.fillStyle='#ff4fcb';ctx.fillRect(o.x,o.y,o.w,o.h);ctx.fillStyle='#ffd7f7';ctx.fillRect(o.x+5,o.y+4,o.w-10,3);ctx.fillStyle='#ff4fcb';ctx.fillRect(o.x+5,o.y-18,5,18);ctx.fillRect(o.x+o.w-10,o.y-18,5,18)}
+else{ctx.shadowBlur=20;ctx.shadowColor='#9a6bff';ctx.fillStyle='#9a6bff';ctx.fillRect(o.x,o.y,o.w,o.h);ctx.fillStyle='#080b20';ctx.fillRect(o.x+5,o.y+5,o.w-10,o.h-5);ctx.strokeStyle='#ff4fcb';ctx.lineWidth=2;ctx.beginPath();ctx.moveTo(o.x+8,o.y+4);ctx.lineTo(o.x+o.w-8,o.y+o.h-3);ctx.stroke()}ctx.restore()}
+function frame(now){const dt=Math.min((now-last)/1000||0,.033);last=now;if(mode==='playing'){elapsed+=dt;speed=Math.min(680,330+elapsed*5.5);score+=dt*speed*.12;spawn-=dt;shardSpawn-=dt;
+if(spawn<=0){spawnObstacle();spawn=Math.max(.62,1.22-Math.min(.5,elapsed*.008)+Math.random()*.38)}
+if(shardSpawn<=0){let base=groundY()-80-Math.random()*95;for(let i=0;i<4;i++)gems.push({x:W+35+i*34,y:base+Math.sin(i*.9)*16,r:8,phase:Math.random()*6.28});shardSpawn=1.3+Math.random()*1.1}
+player.vy+=1500*dt;player.y+=player.vy*dt;const floor=groundY()-player.h;if(player.y>=floor){player.y=floor;player.vy=0;player.onGround=true}
+if(player.sliding){player.slideTime-=dt;if(player.slideTime<=0)player.sliding=false}
+player.invuln=Math.max(0,player.invuln-dt);
+for(const o of obstacles)o.x-=speed*dt;obstacles=obstacles.filter(o=>o.x+o.w>-20);
+for(const g of gems){g.x-=speed*dt;g.phase+=dt*5}gems=gems.filter(g=>g.x>-30);
+for(const p of particles){p.x+=p.vx*dt;p.y+=p.vy*dt;p.vy+=300*dt;p.life-=dt}particles=particles.filter(p=>p.life>0);
+const pb={x:player.x+5,y:player.sliding?groundY()-27:player.y+4,w:player.w-10,h:player.sliding?22:player.h-8};
+for(const o of obstacles){let box={x:o.x+3,y:o.y+2,w:o.w-6,h:o.h-4};if(rectHit(pb,box)){if(o.type==='gate'&&!player.sliding){end();break}else if(o.type!=='gate'&&o.type!=='rift'){end();break}else if(o.type==='rift'){end();break}}}
+if(mode==='playing')for(const g of gems){if(!g.got&&Math.hypot((player.x+player.w/2)-g.x,(player.y+player.h/2)-g.y)<35){g.got=true;shards++;score+=75;burst(g.x,g.y,'#ffe66d',9)}}gems=gems.filter(g=>!g.got);
+scoreEl.textContent=String(Math.floor(score)).padStart(5,'0');shardsEl.textContent=shards;
+}
+drawBackground(dt);for(const g of gems){ctx.save();ctx.translate(g.x,g.y+Math.sin(g.phase)*4);ctx.rotate(Math.PI/4);ctx.shadowBlur=18;ctx.shadowColor='#ffe66d';ctx.fillStyle='#ffe66d';ctx.fillRect(-7,-7,14,14);ctx.fillStyle='#fff7bf';ctx.fillRect(-3,-3,6,6);ctx.restore()}
+obstacles.forEach(drawObstacle);for(const p of particles){ctx.globalAlpha=Math.max(0,p.life/p.max);ctx.fillStyle=p.color;ctx.fillRect(p.x,p.y,p.r,p.r)}ctx.globalAlpha=1;
+if(mode!=='over')drawPlayer();if(shake>0){shake=Math.max(0,shake-1);canvas.style.transform=`translate(${(Math.random()-.5)*shake}px,${(Math.random()-.5)*shake}px)`}else canvas.style.transform='';requestAnimationFrame(frame)}
+document.getElementById('play').addEventListener('click',reset);document.getElementById('again').addEventListener('click',reset);
+document.getElementById('jump').addEventListener('pointerdown',e=>{e.preventDefault();jump()});document.getElementById('slide').addEventListener('pointerdown',e=>{e.preventDefault();slide()});
+canvas.addEventListener('pointerdown',e=>{if(mode==='ready')reset();else jump()});
+window.addEventListener('keydown',e=>{if(['Space','ArrowUp','KeyW'].includes(e.code)){e.preventDefault();jump()}if(['ArrowDown','KeyS'].includes(e.code)){e.preventDefault();slide()}if(e.code==='Enter'&&mode!=='playing')reset()});
+requestAnimationFrame(t=>{last=t;frame(t)});
+})();
+</script>
+</body>
+</html>
