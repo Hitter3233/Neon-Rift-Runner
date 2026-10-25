@@ -1,0 +1,22 @@
+
+name: Update Neon Rift Runner Leaderboard
+
+on:
+  issues:
+    types: [opened, edited]
+
+permissions:
+  issues: write
+
+jobs:
+  update-leaderboard:
+    if: contains(github.event.issue.title, 'Score Submission')
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check score submission
+        env:
+          ISSUE_BODY: ${{ github.event.issue.body }}
+        run: |
+          echo "A score submission was received."
+          echo "The submission needs to be validated before ranking."
