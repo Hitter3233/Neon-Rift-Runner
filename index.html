@@ -32,6 +32,12 @@ h1 em{font-style:normal;color:var(--cyan);text-shadow:0 0 24px #54f7ff77}
 .mainbtn{pointer-events:auto;cursor:pointer;border:0;border-radius:12px;padding:14px 24px;background:linear-gradient(90deg,var(--cyan),#8ca8ff);color:#071024;font-weight:1000;letter-spacing:.12em;font-size:13px;box-shadow:0 0 28px #54f7ff44}
 .sub{margin-top:13px;font-size:11px;color:#8998c9;letter-spacing:.12em}
 .hidden{display:none!important}
+.secondarybtn{pointer-events:auto;cursor:pointer;border:1px solid #54f7ff88;border-radius:12px;padding:11px 16px;background:#101638;color:#dffcff;font-weight:900;letter-spacing:.08em;font-size:11px;margin-top:10px}
+.board{max-height:min(70vh,500px);overflow:auto;text-align:left;margin:16px 0}
+.boardrow{display:grid;grid-template-columns:42px 1fr auto;gap:10px;align-items:center;padding:10px 8px;border-bottom:1px solid #ffffff16;font-size:13px}
+.boardrow:first-child{color:#ffe66d}.rank{font-weight:1000;color:#54f7ff}.playername{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.playerpoints{font-weight:900;color:#dffcff}
+#playerName{width:100%;padding:12px;border:1px solid #54f7ff77;border-radius:10px;background:#080b20;color:#fff;font:inherit;margin:0 0 10px}
+.boardnote{font-size:11px!important;color:#9eacd8!important;margin:10px auto!important}
 @media(max-width:560px){#wrap{width:100vw;height:100dvh;border:0}.tip{max-width:170px}.ctrl{width:50px;height:48px}.pill{padding:6px 8px;font-size:10px}.pill b{font-size:13px}}
 </style>
 </head>
@@ -60,7 +66,8 @@ h1 em{font-style:normal;color:var(--cyan);text-shadow:0 0 24px #54f7ff77}
     <div class="kicker">A NEON ARCADE RUN</div>
     <h1>RUN THE<br><em>RIFT.</em></h1>
     <p>The city is collapsing into a digital void. Sprint through the neon grid, vault over glitches, slide under laser gates, and collect energy shards to beat your high score.</p>
-    <button class="mainbtn" id="play">START RUN</button>
+    <button class="mainbtn" id="play">START RUN</button><br>
+    <button class="secondarybtn" id="openBoard">🏆 VIEW LEADERBOARD</button>
     <div class="sub">ENDLESS · ONE MORE TRY · NO DOWNLOADS</div>
   </div>
 </div>
@@ -69,14 +76,31 @@ h1 em{font-style:normal;color:var(--cyan);text-shadow:0 0 24px #54f7ff77}
     <div class="kicker">SIGNAL LOST</div>
     <h1>RIFT <em>CRASH.</em></h1>
     <p id="result">You made it a long way.</p>
-    <button class="mainbtn" id="again">RUN IT BACK</button>
+    <button class="mainbtn" id="again">RUN IT BACK</button><br>
+    <button class="secondarybtn" id="openBoardOver">🏆 VIEW LEADERBOARD</button>
     <div class="sub">THE GRID IS WAITING.</div>
+  </div>
+</div>
+<div class="overlay hidden" id="boardOverlay">
+  <div class="panel">
+    <div class="kicker">GLOBAL HIGH SCORES</div>
+    <h1>HALL OF <em>FAME</em></h1>
+    <p id="boardStatus">Loading leaderboard…</p>
+    <div class="board" id="boardRows"></div>
+    <button class="secondarybtn" id="closeBoard">CLOSE</button>
+    <p class="boardnote">Online scores are shared when a leaderboard database is configured. Without one, this shows scores saved in this browser only.</p>
   </div>
 </div>
 </div>
 <script>
 (() => {
 const canvas=document.getElementById('game'),ctx=canvas.getContext('2d');
+// Add your Supabase project URL and anon/public key here to enable a shared online leaderboard.
+// Setup instructions and SQL are included in README.txt inside the ZIP.
+const LEADERBOARD_CONFIG={supabaseUrl:'YOUR_SUPABASE_PROJECT_URL',supabaseAnonKey:'YOUR_SUPABASE_ANON_KEY'};
+const isOnlineBoard=()=>LEADERBOARD_CONFIG.supabaseUrl.startsWith('https://')&&!LEADERBOARD_CONFIG.supabaseUrl.includes('YOUR_')&&!LEADERBOARD_CONFIG.supabaseAnonKey.includes('YOUR_');
+const boardOverlay=document.getElementById('boardOverlay'),boardRows=document.getElementById('boardRows'),boardStatus=document.getElementById('boardStatus');
+let runSubmitted=false;
 const scoreEl=document.getElementById('score'),shardsEl=document.getElementById('shards'),bestEl=document.getElementById('best');
 const startEl=document.getElementById('start'),overEl=document.getElementById('over'),resultEl=document.getElementById('result');
 let W=900,H=600,dpr=1,mode='ready',last=0,elapsed=0,score=0,shards=0,speed=330,spawn=0,shardSpawn=0,shake=0;
@@ -87,11 +111,11 @@ let best=0;try{best=Number(localStorage.getItem('neonRiftBest')||0)}catch(e){}
 bestEl.textContent=best;
 function resize(){const r=canvas.getBoundingClientRect();dpr=Math.min(devicePixelRatio||1,2);W=r.width;H=r.height;canvas.width=Math.floor(W*dpr);canvas.height=Math.floor(H*dpr);ctx.setTransform(dpr,0,0,dpr,0,0);player.x=W*.15;if(player.onGround)player.y=groundY()-player.h;stars=Array.from({length:70},()=>({x:Math.random()*W,y:Math.random()*H*.72,r:Math.random()*1.7+.3,a:Math.random()*.6+.2}))}
 window.addEventListener('resize',resize);resize();
-function reset(){mode='playing';elapsed=0;score=0;shards=0;speed=330;spawn=.8;shardSpawn=.8;obstacles=[];gems=[];particles=[];shake=0;player.x=W*.15;player.w=34;player.h=52;player.y=groundY()-player.h;player.vy=0;player.onGround=true;player.sliding=false;player.slideTime=0;player.invuln=0;startEl.classList.add('hidden');overEl.classList.add('hidden');last=performance.now()}
+function reset(){runSubmitted=false;mode='playing';elapsed=0;score=0;shards=0;speed=330;spawn=.8;shardSpawn=.8;obstacles=[];gems=[];particles=[];shake=0;player.x=W*.15;player.w=34;player.h=52;player.y=groundY()-player.h;player.vy=0;player.onGround=true;player.sliding=false;player.slideTime=0;player.invuln=0;startEl.classList.add('hidden');overEl.classList.add('hidden');last=performance.now()}
 function jump(){if(mode==='ready'){reset();return}if(mode!=='playing')return;if(player.onGround&&!player.sliding){player.vy=-Math.min(660,H*1.1);player.onGround=false;burst(player.x+10,player.y+player.h,'#54f7ff',7)}}
 function slide(){if(mode!=='playing')return;if(player.onGround){player.sliding=true;player.slideTime=.55}}
 function burst(x,y,color,n){for(let i=0;i<n;i++)particles.push({x,y,vx:(Math.random()-.5)*240,vy:(Math.random()-.8)*220,life:.35+Math.random()*.5,max:.8,color,r:2+Math.random()*3})}
-function end(){mode='over';shake=15;burst(player.x+15,player.y+20,'#ff4fcb',24);best=Math.max(best,Math.floor(score));try{localStorage.setItem('neonRiftBest',best)}catch(e){}bestEl.textContent=best;resultEl.textContent=`Score: ${Math.floor(score).toLocaleString()} · Shards: ${shards}. The rift gets faster the longer you survive.`;overEl.classList.remove('hidden')}
+function end(){if(mode!=='playing')return;mode='over';shake=15;burst(player.x+15,player.y+20,'#ff4fcb',24);best=Math.max(best,Math.floor(score));try{localStorage.setItem('neonRiftBest',best)}catch(e){}bestEl.textContent=best;resultEl.textContent=`Score: ${Math.floor(score).toLocaleString()} · Shards: ${shards}. The rift gets faster the longer you survive.`;overEl.classList.remove('hidden');submitScore()}
 function rectHit(a,b){return a.x<b.x+b.w&&a.x+a.w>b.x&&a.y<b.y+b.h&&a.y+a.h>b.y}
 function spawnObstacle(){const g=groundY(),roll=Math.random();if(roll<.48){const h=35+Math.random()*23;obstacles.push({type:'block',x:W+40,y:g-h,w:28+Math.random()*17,h})}else if(roll<.8){obstacles.push({type:'gate',x:W+40,y:g-84,w:54,h:15})}else{obstacles.push({type:'rift',x:W+40,y:g-22,w:64,h:22})}}
 function drawBackground(dt){ctx.fillStyle='#080b20';ctx.fillRect(0,0,W,H);
@@ -130,6 +154,26 @@ scoreEl.textContent=String(Math.floor(score)).padStart(5,'0');shardsEl.textConte
 drawBackground(dt);for(const g of gems){ctx.save();ctx.translate(g.x,g.y+Math.sin(g.phase)*4);ctx.rotate(Math.PI/4);ctx.shadowBlur=18;ctx.shadowColor='#ffe66d';ctx.fillStyle='#ffe66d';ctx.fillRect(-7,-7,14,14);ctx.fillStyle='#fff7bf';ctx.fillRect(-3,-3,6,6);ctx.restore()}
 obstacles.forEach(drawObstacle);for(const p of particles){ctx.globalAlpha=Math.max(0,p.life/p.max);ctx.fillStyle=p.color;ctx.fillRect(p.x,p.y,p.r,p.r)}ctx.globalAlpha=1;
 if(mode!=='over')drawPlayer();if(shake>0){shake=Math.max(0,shake-1);canvas.style.transform=`translate(${(Math.random()-.5)*shake}px,${(Math.random()-.5)*shake}px)`}else canvas.style.transform='';requestAnimationFrame(frame)}
+async function submitScore(){
+ if(runSubmitted)return;runSubmitted=true;
+ const scoreValue=Math.floor(score);if(scoreValue<1)return;
+ let playerName='Runner';try{playerName=(localStorage.getItem('neonRiftPlayerName')||'').trim()}catch(e){}
+ if(!playerName){playerName=(prompt('Choose a name for the leaderboard (max 18 characters):','Runner')||'Runner').trim().slice(0,18)||'Runner';try{localStorage.setItem('neonRiftPlayerName',playerName)}catch(e){}}
+ if(!isOnlineBoard()){boardStatus.textContent='Online leaderboard not connected yet. Your personal best is saved on this device.';return}
+ try{const r=await fetch(LEADERBOARD_CONFIG.supabaseUrl.replace(/\/$/, '')+'/rest/v1/scores',{method:'POST',headers:{'Content-Type':'application/json','apikey':LEADERBOARD_CONFIG.supabaseAnonKey,'Authorization':'Bearer '+LEADERBOARD_CONFIG.supabaseAnonKey,'Prefer':'return=minimal'},body:JSON.stringify({player_name:playerName,score:scoreValue,shards})});if(!r.ok)throw new Error('Score submission failed');boardStatus.textContent='Score submitted!';}catch(e){boardStatus.textContent='Could not submit score. Check the online leaderboard setup and connection.'}
+}
+async function openLeaderboard(){boardOverlay.classList.remove('hidden');boardRows.innerHTML='';
+ if(!isOnlineBoard()){
+  boardStatus.textContent='Local leaderboard — connect Supabase to share scores with every player.';
+  let localBest=0;try{localBest=Number(localStorage.getItem('neonRiftBest')||0)}catch(e){}
+  boardRows.innerHTML=localBest?`<div class="boardrow"><span class="rank">1</span><span class="playername">This device</span><span class="playerpoints">${localBest.toLocaleString()}</span></div>`:'<div class="boardrow"><span class="rank">—</span><span class="playername">No scores yet</span><span class="playerpoints">—</span></div>';return;
+ }
+ boardStatus.textContent='Loading global scores…';
+ try{const url=LEADERBOARD_CONFIG.supabaseUrl.replace(/\/$/,'')+'/rest/v1/scores?select=player_name,score,shards&order=score.desc&limit=10';const r=await fetch(url,{headers:{'apikey':LEADERBOARD_CONFIG.supabaseAnonKey,'Authorization':'Bearer '+LEADERBOARD_CONFIG.supabaseAnonKey}});if(!r.ok)throw new Error('Leaderboard request failed');const rows=await r.json();boardStatus.textContent=rows.length?'Top 10 runners worldwide':'No scores yet — be the first!';boardRows.innerHTML=rows.length?rows.map((row,i)=>`<div class="boardrow"><span class="rank">#${i+1}</span><span class="playername">${escapeHtml(row.player_name||'Runner')} · ${Number(row.shards)||0} shards</span><span class="playerpoints">${Number(row.score).toLocaleString()}</span></div>`).join(''):'<div class="boardrow"><span class="rank">★</span><span class="playername">Be the first on the board!</span><span class="playerpoints">—</span></div>';
+ }catch(e){boardStatus.textContent='Could not load scores. Check your Supabase setup.';boardRows.innerHTML=''}
+}
+function escapeHtml(value){return String(value).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
+document.getElementById('openBoard').addEventListener('click',openLeaderboard);document.getElementById('openBoardOver').addEventListener('click',openLeaderboard);document.getElementById('closeBoard').addEventListener('click',()=>boardOverlay.classList.add('hidden'));
 document.getElementById('play').addEventListener('click',reset);document.getElementById('again').addEventListener('click',reset);
 document.getElementById('jump').addEventListener('pointerdown',e=>{e.preventDefault();jump()});document.getElementById('slide').addEventListener('pointerdown',e=>{e.preventDefault();slide()});
 canvas.addEventListener('pointerdown',e=>{if(mode==='ready')reset();else jump()});
